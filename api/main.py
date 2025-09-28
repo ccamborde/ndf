@@ -312,32 +312,52 @@ def _scan_disk_stats(root_path: Path) -> Dict[str, Any]:
     }
     if not root_path.exists():
         return stats
-    for level1_dir in root_path.iterdir():
-        if not level1_dir.is_dir() or _is_hidden(level1_dir):
-            continue
-        level1 = level1_dir.name
-        lvl1_total = 0
-        for level2_dir in level1_dir.iterdir():
-            if not level2_dir.is_dir() or _is_hidden(level2_dir):
+    try:
+        level1_iter = list(root_path.iterdir())
+    except Exception:
+        return stats
+    for level1_dir in level1_iter:
+        try:
+            if not level1_dir.is_dir() or _is_hidden(level1_dir):
                 continue
-            level2 = level2_dir.name
-            lvl2_count = 0
-            for file_path in level2_dir.rglob("*"):
-                if not file_path.is_file() or _is_hidden(file_path) or file_path.name.startswith("~$"):
+            level1 = level1_dir.name
+            lvl1_total = 0
+            try:
+                level2_iter = list(level1_dir.iterdir())
+            except Exception:
+                continue
+            for level2_dir in level2_iter:
+                try:
+                    if not level2_dir.is_dir() or _is_hidden(level2_dir):
+                        continue
+                    level2 = level2_dir.name
+                    lvl2_count = 0
+                    try:
+                        for file_path in level2_dir.rglob("*"):
+                            try:
+                                if not file_path.is_file() or _is_hidden(file_path) or file_path.name.startswith("~$"):
+                                    continue
+                                if file_path.suffix.lower() not in ALLOW_EXTS:
+                                    continue
+                                stats["total"] += 1
+                                lvl1_total += 1
+                                lvl2_count += 1
+                                stats["by_level2"][level2] = stats["by_level2"].get(level2, 0) + 1
+                                stats["paths"].append(str(file_path))
+                            except Exception:
+                                continue
+                    except Exception:
+                        continue
+                    if lvl2_count:
+                        if level1 not in stats["by_level1_level2"]:
+                            stats["by_level1_level2"][level1] = {}
+                        stats["by_level1_level2"][level1][level2] = lvl2_count
+                except Exception:
                     continue
-                if file_path.suffix.lower() not in ALLOW_EXTS:
-                    continue
-                stats["total"] += 1
-                lvl1_total += 1
-                lvl2_count += 1
-                stats["by_level2"][level2] = stats["by_level2"].get(level2, 0) + 1
-                stats["paths"].append(str(file_path))
-            if lvl2_count:
-                if level1 not in stats["by_level1_level2"]:
-                    stats["by_level1_level2"][level1] = {}
-                stats["by_level1_level2"][level1][level2] = lvl2_count
-        if lvl1_total:
-            stats["by_level1"][level1] = stats["by_level1"].get(level1, 0) + lvl1_total
+            if lvl1_total:
+                stats["by_level1"][level1] = stats["by_level1"].get(level1, 0) + lvl1_total
+        except Exception:
+            continue
     return stats
 
 
