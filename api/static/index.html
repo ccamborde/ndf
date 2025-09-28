@@ -163,10 +163,14 @@
             (async ()=>{
               try{
                 if(ext === 'pdf'){
-                  slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${fileUrl + (qval ? ('#search=' + encodeURIComponent(qval)) : '')}\"></iframe>`;
+                  const inlineUrl = API('/api/file/inline') + '?path=' + encodeURIComponent(s.path);
+                  slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${inlineUrl}\"></iframe>`;
                 } else if(ext === 'xls' || ext === 'xlsx'){
                   // Rendu côté serveur en HTML (pas de CDN nécessaire)
-                  const htmlUrl = API('/api/file/html') + '?path=' + encodeURIComponent(s.path);
+                  const htmlParams = new URLSearchParams();
+                  htmlParams.set('path', s.path);
+                  if(qval) htmlParams.set('q', qval);
+                  const htmlUrl = API('/api/file/html') + '?' + htmlParams.toString();
                   slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${htmlUrl}\"></iframe>`;
                 } else {
                   // Fallback: tenter d’afficher dans un iframe

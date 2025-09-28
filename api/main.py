@@ -2,12 +2,13 @@ import os
 import json
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+import re
 
 import requests
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response, StreamingResponse
 import html as html_escape
 
 
@@ -78,7 +79,10 @@ def _build_search_body(
             "by_level2": {"terms": {"field": "level2", "size": 200}},
         },
         "highlight": {
-            "fields": {"title": {}},
+            "fields": {
+                "title": {},
+                "content": {"fragment_size": 160, "number_of_fragments": 1}
+            },
             "pre_tags": ["<mark>"],
             "post_tags": ["</mark>"],
         },
@@ -86,6 +90,18 @@ def _build_search_body(
     if sort == "recency":
         body["sort"] = [{"modified_at": {"order": "desc"}}]
     return body
+
+
+def _ensure_highlight_settings():
+    try:
+        # Augmente la limite d'analyse pour le highlight des champs longs
+        requests.put(
+            f"{OPENSEARCH_URL}/{INDEX_NAME}/_settings",
+            json={"index.highlight.max_analyzed_offset": 5000000},
+            timeout=5,
+        )
+    except Exception:
+        pass
 
 
 @app.get("/api/health")
@@ -102,6 +118,7 @@ def search(
     size: int = 20,
     sort: Optional[str] = None,
 ):
+    _ensure_highlight_settings()
     body = _build_search_body(q, level1, level2, from_, size, sort)
     resp = requests.post(f"{OPENSEARCH_URL}/{INDEX_NAME}/_search", json=body, timeout=30)
     if not resp.ok:
@@ -180,12 +197,43 @@ def get_file(path: str):
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }
     media_type = mime_map.get(ext, "application/octet-stream")
-    # Fournir le bon nom de fichier pour le téléchargement
+    # Fournir le bon nom de fichier pour le téléchargement (attachment)
     return FileResponse(str(abs_path), media_type=media_type, filename=abs_path.name)
 
 
+@app.get("/api/file/inline")
+def get_file_inline(path: str):
+    # Sert le fichier en mode inline (pour l'aperçu) sans forcer le téléchargement
+    try:
+        abs_path = Path(path).resolve()
+        root = Path(DOC_ROOT).resolve()
+        abs_path.relative_to(root)
+    except Exception:
+        raise HTTPException(status_code=403, detail="Chemin non autorisé")
+    if not abs_path.exists() or not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    ext = abs_path.suffix.lower()
+    mime_map = {
+        ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".doc": "application/msword",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+    media_type = mime_map.get(ext, "application/octet-stream")
+    def file_iterator(chunk_size: int = 8192):
+        with open(abs_path, "rb") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+    headers = {"Content-Disposition": f"inline; filename=\"{abs_path.name}\""}
+    return StreamingResponse(file_iterator(), media_type=media_type, headers=headers)
+
+
 @app.get("/api/file/html")
-def get_file_as_html(path: str):
+def get_file_as_html(path: str, q: Optional[str] = None):
     # Rend .xlsx/.xls en HTML via openpyxl/xlrd
     try:
         abs_path = Path(path).resolve()
@@ -215,8 +263,18 @@ def get_file_as_html(path: str):
                 rows.append(["" if sh.cell_value(rx, cx) is None else str(sh.cell_value(rx, cx)) for cx in range(sh.ncols)])
         # Convertir en HTML simple avec échappement
         html_rows = []
+        def highlight_cell(text: str, query: Optional[str]) -> str:
+            escaped = html_escape.escape(text)
+            if not query:
+                return escaped
+            try:
+                pattern = re.compile(re.escape(query), re.IGNORECASE)
+                return pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", escaped)
+            except Exception:
+                return escaped
+
         for r in rows:
-            tds = "".join(f"<td>{html_escape.escape(cell)}</td>" for cell in r)
+            tds = "".join(f"<td>{highlight_cell(cell, q)}</td>" for cell in r)
             html_rows.append(f"<tr>{tds}</tr>")
         html = (
             "<!doctype html><html><head><meta charset='utf-8'><style>"
