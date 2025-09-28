@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recherche – Notes de frais</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px}
+      header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+      .filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+      .result{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:10px 0}
+      .result.selected{background:#eef2ff;border-color:#93c5fd}
+      mark{background:#ffec99}
+      .muted{color:#6b7280;font-size:12px}
+      input,select,button{padding:8px;border-radius:6px;border:1px solid #d1d5db}
+      button{cursor:pointer}
+      .pill{display:inline-block;border:1px solid #d1d5db;border-radius:999px;padding:2px 8px;margin-right:6px;font-size:12px}
+      .sheet-container table{width:100%;border-collapse:collapse}
+      .sheet-container th,.sheet-container td{border:1px solid #e5e7eb;padding:4px}
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Recherche</h1>
+    </header>
+    <div style="display:flex;gap:8px;align-items:center;margin:16px 0">
+      <input id="q" placeholder="Tapez une recherche (ex: bordeaux)" style="flex:1;min-width:420px;font-size:18px" />
+      <select id="sort" style="font-size:16px">
+        <option value="">Pertinence</option>
+        <option value="recency">Récence</option>
+      </select>
+      <button id="btnSearch" style="font-size:16px">Rechercher</button>
+      <button id="btnClear" style="font-size:16px">Tout effacer</button>
+    </div>
+
+    <section id="progress" class="muted" style="margin:8px 0"></section>
+    <div id="status" class="muted" style="margin:6px 0"></div>
+    <div id="count" class="muted" style="margin:6px 0"></div>
+    <section id="viewer" style="display:none; margin:12px 0">
+      <div class="muted" style="margin-bottom:6px">Aperçu du document</div>
+      <iframe id="docFrame" style="width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px"></iframe>
+    </section>
+
+    <section id="results"></section>
+
+    <script>
+      const API = (path) => (location.origin + path);
+
+      function loadScript(src){
+        return new Promise((resolve,reject)=>{
+          const s = document.createElement('script');
+          s.src = src; s.async = true;
+          s.onload = ()=>resolve();
+          s.onerror = ()=>reject(new Error('Failed to load '+src));
+          document.head.appendChild(s);
+        });
+      }
+
+      async function ensureXLSXLoaded(){
+        if(window.XLSX) return;
+        try{
+          await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js');
+        }catch(e){
+          await loadScript('https://unpkg.com/xlsx@0.19.3/dist/xlsx.full.min.js');
+        }
+      }
+
+      async function refreshProgress(){
+        try{
+          const r = await fetch(API('/api/stats'));
+          const s = await r.json();
+          const indexed = (s.index && s.index.total) || 0;
+          const total = (s.disk && s.disk.total) || 0;
+          const pct = total ? Math.round(indexed * 100 / total) : 0;
+          const node = document.getElementById('progress');
+          if(!total){
+            node.textContent = '';
+            return;
+          }
+          if(indexed === 0){
+            node.textContent = `Indexation en cours… 0/${total} (0%)`;
+          } else if(indexed < total){
+            node.textContent = `Indexation en cours… ${indexed}/${total} (${pct}%)`;
+          } else {
+            node.textContent = `Indexation terminée – ${indexed}/${total} (100%)`;
+          }
+        }catch(e){ /* ignore */ }
+      }
+
+      async function search(){
+        const q = document.getElementById('q').value.trim();
+        const params = new URLSearchParams();
+        if(q) params.set('q', q);
+        const status = document.getElementById('status');
+        const count = document.getElementById('count');
+        const results = document.getElementById('results');
+        const sort = document.getElementById('sort').value;
+        if(sort) params.set('sort', sort);
+        status.textContent = 'Recherche…';
+        count.textContent = '';
+        results.innerHTML = '';
+        try{
+          const r = await fetch(API('/api/search') + '?' + params.toString());
+          if(!r.ok){
+            const text = await r.text();
+            results.innerHTML = `<div class="result"><strong>Erreur ${r.status}</strong><div class="muted">${text || 'Requête invalide'}</div></div>`;
+            status.textContent = '';
+            return;
+          }
+          const data = await r.json();
+          render(data);
+          const total = (data && data.hits && data.hits.total && data.hits.total.value) || 0;
+          count.textContent = `Résultats: ${total}`;
+          status.textContent = '';
+        }catch(e){
+          results.innerHTML = `<div class="result"><strong>Erreur</strong><div class="muted">${(e && e.message) || e}</div></div>`;
+          status.textContent = '';
+        }
+      }
+
+      function render(data){
+        const root = document.getElementById('results');
+        root.innerHTML = '';
+        const hits = data.hits?.hits || [];
+        hits.forEach(h => {
+          const s = h._source || {};
+          const div = document.createElement('div');
+          div.className = 'result';
+          const hlTitle = (h.highlight && h.highlight.title && h.highlight.title[0]) || s.title || s.file_name;
+          const hlContent = (h.highlight && h.highlight.content && h.highlight.content[0]) || '';
+          const fileUrl = s.path ? (API('/api/file') + '?path=' + encodeURIComponent(s.path)) : '';
+          div.innerHTML = `
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <strong>${hlTitle}</strong>
+              ${fileUrl ? ('<a class="download-link" href="' + fileUrl + '" download>Télécharger</a>') : ''}
+            </div>
+            <div class="muted">${s.level1 || ''} · ${s.level2 || ''} · ${s.ext || ''} · ${s.modified_at || ''}</div>
+            <div>${hlContent}</div>
+            <div class="muted">${s.path || ''}</div>
+          `;
+          // Créer slot viewer juste sous la ligne
+          const slot = document.createElement('div');
+          slot.className = 'viewer-slot';
+          slot.style.display = 'none';
+          slot.style.marginTop = '8px';
+          slot.innerHTML = '';
+
+          div.style.cursor = 'pointer';
+          div.addEventListener('click', ()=>{
+            if(!s.path) return;
+            // Toggle: si déjà ouvert, on referme et retire la couleur
+            const isOpen = slot.style.display === 'block';
+            document.querySelectorAll('.viewer-slot').forEach(v => { if(v !== slot) v.style.display = 'none'; });
+            document.querySelectorAll('.result.selected').forEach(r => r.classList.remove('selected'));
+            if(isOpen){ slot.style.display = 'none'; return; }
+            div.classList.add('selected');
+            const qval = document.getElementById('q').value.trim();
+            const fileUrl = API('/api/file') + '?path=' + encodeURIComponent(s.path);
+            slot.innerHTML = '<div class="muted">Chargement…</div>';
+            slot.style.display = 'block';
+            const ext = (s.ext || '').toLowerCase();
+            (async ()=>{
+              try{
+                if(ext === 'pdf'){
+                  slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${fileUrl + (qval ? ('#search=' + encodeURIComponent(qval)) : '')}\"></iframe>`;
+                } else if(ext === 'xls' || ext === 'xlsx'){
+                  // Rendu côté serveur en HTML (pas de CDN nécessaire)
+                  const htmlUrl = API('/api/file/html') + '?path=' + encodeURIComponent(s.path);
+                  slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${htmlUrl}\"></iframe>`;
+                } else {
+                  // Fallback: tenter d’afficher dans un iframe
+                  slot.innerHTML = `<iframe style=\"width:100%; height:75vh; border:1px solid #e5e7eb; border-radius:8px\" src=\"${fileUrl}\"></iframe>`;
+                }
+                window.scrollBy({ top: div.getBoundingClientRect().height + 8, behavior: 'smooth' });
+              }catch(e){
+                slot.innerHTML = `<div class=\"result\"><strong>Erreur</strong><div class=\"muted\">${(e && e.message) || e}</div></div>`;
+              }
+            })();
+          });
+          // Empêcher le clic sur Télécharge de déclencher l’aperçu
+          const dl = div.querySelector('.download-link');
+          if(dl){ dl.addEventListener('click', (e)=>{ e.stopPropagation(); }); }
+          root.appendChild(div);
+          root.appendChild(slot);
+        });
+        if(hits.length === 0){ root.innerHTML = '<p class="muted">Aucun résultat</p>'; }
+      }
+
+      document.getElementById('btnSearch').addEventListener('click', search);
+      document.getElementById('btnClear').addEventListener('click', ()=>{ document.getElementById('q').value=''; search(); });
+      document.getElementById('q').addEventListener('keydown', (e)=>{ if(e.key==='Enter') search(); });
+      // recherche initiale + progression périodique
+      search();
+      refreshProgress();
+      setInterval(refreshProgress, 5000);
+    </script>
+  </body>
+  </html>
+
+

@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY ingest.py /app/ingest.py
+COPY opensearch-index.json /app/opensearch-index.json
+
+ENV TIKA_URL=http://tika:9998
+ENV OPENSEARCH_URL=http://opensearch:9200
+ENV INDEX_NAME=ndf-docs
+# Utiliser la forme "ENV clé valeur" pour supporter les espaces
+ENV DOC_ROOT /workspace/data/Note de frais
+
+CMD ["python", "-u", "/app/ingest.py", "--watch"]
+
+

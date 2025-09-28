@@ -1,0 +1,12 @@
+requests==2.32.3
+urllib3==2.2.3
+aiohttp==3.10.5
+tenacity==9.0.0
+python-dateutil==2.9.0.post0
+click==8.1.7
+rich==13.8.1
+watchdog==5.0.2
+certifi>=2024.7.4
+idna>=3.7
+charset-normalizer>=3.3.2
+

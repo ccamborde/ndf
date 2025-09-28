@@ -1,0 +1,62 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "analysis": {
+      "filter": {
+        "french_elision": {
+          "type": "elision",
+          "articles_case": true,
+          "articles": [
+            "l", "m", "t", "qu", "n", "s", "j", "d", "c",
+            "jusqu", "quoiqu", "lorsqu", "puisqu"
+          ]
+        },
+        "french_stop": { "type": "stop", "stopwords": "_french_" },
+        "french_stemmer": { "type": "stemmer", "language": "light_french" }
+      },
+      "analyzer": {
+        "french_text": {
+          "tokenizer": "standard",
+          "char_filter": ["html_strip"],
+          "filter": [
+            "lowercase",
+            "asciifolding",
+            "french_elision",
+            "french_stop",
+            "french_stemmer"
+          ]
+        },
+        "autocomplete": {
+          "tokenizer": "standard",
+          "filter": ["lowercase", "asciifolding"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "path": { "type": "keyword" },
+      "file_name": { "type": "keyword" },
+      "level1": { "type": "keyword" },
+      "level2": { "type": "keyword" },
+      "title": {
+        "type": "text",
+        "analyzer": "french_text",
+        "fields": { "keyword": { "type": "keyword" } }
+      },
+      "content": { "type": "text", "analyzer": "french_text" },
+      "media_type": { "type": "keyword" },
+      "ext": { "type": "keyword" },
+      "modified_at": { "type": "date" },
+      "size_bytes": { "type": "long" },
+      "sha256": { "type": "keyword" },
+      "suggest": { "type": "search_as_you_type", "analyzer": "autocomplete" }
+    }
+  }
+}
+
+
