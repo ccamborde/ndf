@@ -23,6 +23,7 @@ ALLOW_EXTS = {".pdf", ".doc", ".docx", ".xls", ".xlsx"}
 FILTER_LEVEL1 = {s.strip() for s in os.environ.get("FILTER_LEVEL1", "").split(",") if s.strip()}
 FILTER_LEVEL2 = {s.strip() for s in os.environ.get("FILTER_LEVEL2", "").split(",") if s.strip()}
 MAX_DOCS = int(os.environ.get("MAX_DOCS", "0") or 0)
+MAX_OCR_MB = int(os.environ.get("MAX_OCR_MB", "30") or 30)
 
 
 def is_hidden(path: Path) -> bool:
@@ -133,7 +134,15 @@ def build_doc(payload: Dict[str, str]) -> Dict:
     p = Path(payload["path"]) 
     stat = p.stat()
     sha256 = compute_sha256(p)
-    meta = tika_extract_text(p)
+    meta = {"title": p.stem, "content": "", "media_type": ""}
+    # Skipper l'OCR si le fichier est trop volumineux
+    try:
+        size_mb = stat.st_size / (1024 * 1024)
+        if size_mb <= MAX_OCR_MB:
+            meta = tika_extract_text(p)
+    except Exception:
+        # Tolérant : on indexe quand même sans contenu
+        pass
 
     suggest_terms = []
     if payload.get("level1"):

@@ -308,6 +308,7 @@ def _scan_disk_stats(root_path: Path) -> Dict[str, Any]:
         "by_level1": {},
         "by_level2": {},
         "by_level1_level2": {},
+        "paths": [],
     }
     if not root_path.exists():
         return stats
@@ -330,6 +331,7 @@ def _scan_disk_stats(root_path: Path) -> Dict[str, Any]:
                 lvl1_total += 1
                 lvl2_count += 1
                 stats["by_level2"][level2] = stats["by_level2"].get(level2, 0) + 1
+                stats["paths"].append(str(file_path))
             if lvl2_count:
                 if level1 not in stats["by_level1_level2"]:
                     stats["by_level1_level2"][level1] = {}
@@ -374,7 +376,25 @@ def stats():
         "by_level1_missing": diff_maps(disk.get("by_level1", {}), index.get("by_level1", {})),
         "by_level2_missing": diff_maps(disk.get("by_level2", {}), index.get("by_level2", {})),
     }
-    return {"doc_root": disk.get("root"), "disk": disk, "index": index, "diff": diff}
+    # Identifier quelques fichiers manquants (par level2)
+    missing_examples: Dict[str, list] = {}
+    if disk.get("paths"):
+        # naive: on renvoie uniquement une petite liste des premiers manquants par dossier
+        from collections import defaultdict
+        by_l2 = defaultdict(list)
+        for p in disk["paths"]:
+            try:
+                parts = Path(p).parts
+                # .../root/level1/level2/file
+                l2 = parts[-2]
+            except Exception:
+                l2 = "__unknown__"
+            by_l2[l2].append(p)
+        # Limiter pour la réponse
+        for k, vals in by_l2.items():
+            missing_examples[k] = vals[:3]
+
+    return {"doc_root": disk.get("root"), "disk": {k: v for k, v in disk.items() if k != "paths"}, "index": index, "diff": diff, "missing_examples": missing_examples}
 
 
 # Frontend statique

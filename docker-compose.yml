@@ -31,7 +31,7 @@ services:
     command: -p 9998
     environment:
       - TIKA_OCR_ENABLED=true
-      - TIKA_OCR_TIMEOUT=120000
+      - TIKA_OCR_TIMEOUT=600000
       - TIKA_PDF_ocrStrategy=ocr_and_text
     ports:
       - "9998:9998"
