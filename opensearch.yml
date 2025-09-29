@@ -1,0 +1,25 @@
+cluster.name: docker-cluster
+network.host: 0.0.0.0
+
+# Limiter l'utilisation CPU/threads dérivés
+node.processors: 1
+
+# Limiter la pression des files d'attente
+thread_pool:
+  search:
+    queue_size: 200
+  write:
+    queue_size: 200
+  bulk:
+    queue_size: 200
+
+# Limiter le nombre de scrolls ouverts
+search:
+  max_open_scroll_context: 100
+
+# Limiter le buffer d'indexation (mémoire gérée par OpenSearch en plus du JVM heap)
+indices:
+  memory:
+    index_buffer_size: 10%
+
+

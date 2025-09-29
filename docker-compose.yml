@@ -15,6 +15,7 @@ services:
       - "9600:9600"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+      - ./opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:2.14.0
@@ -62,6 +63,7 @@ services:
       - OPENSEARCH_URL=http://opensearch:9200
       - INDEX_NAME=ndf-docs
       - DOC_ROOT=/workspace/data/Note de frais
+      - WORKERS=2
     depends_on:
       - opensearch
       - tika

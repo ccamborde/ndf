@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Iterator, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -24,6 +26,7 @@ FILTER_LEVEL1 = {s.strip() for s in os.environ.get("FILTER_LEVEL1", "").split(",
 FILTER_LEVEL2 = {s.strip() for s in os.environ.get("FILTER_LEVEL2", "").split(",") if s.strip()}
 MAX_DOCS = int(os.environ.get("MAX_DOCS", "0") or 0)
 MAX_OCR_MB = int(os.environ.get("MAX_OCR_MB", "30") or 30)
+WORKERS = int(os.environ.get("WORKERS", "2") or 2)
 
 
 def is_hidden(path: Path) -> bool:
@@ -209,12 +212,21 @@ class IngestEventHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
-        index_path(Path(event.src_path))
+        if EXECUTOR is not None:
+            EXECUTOR.submit(index_path, Path(event.src_path))
+        else:
+            index_path(Path(event.src_path))
 
     def on_modified(self, event):
         if event.is_directory:
             return
-        index_path(Path(event.src_path))
+        if EXECUTOR is not None:
+            EXECUTOR.submit(index_path, Path(event.src_path))
+        else:
+            index_path(Path(event.src_path))
+
+
+EXECUTOR: Optional[ThreadPoolExecutor] = None
 
 
 @click.command()
@@ -222,18 +234,36 @@ class IngestEventHandler(FileSystemEventHandler):
 @click.option("--initial", is_flag=True, default=True, help="Effectuer une indexation initiale")
 def main(watch: bool, initial: bool):
     ensure_index()
+    global EXECUTOR
+    EXECUTOR = ThreadPoolExecutor(max_workers=max(1, WORKERS))
+
     if initial:
         total = 0
-        for payload in iter_documents():
+        completed = 0
+        lock = Lock()
+
+        def _task(payload: Dict[str, str]):
+            nonlocal completed, total
             try:
                 doc = build_doc(payload)
                 index_document(doc)
-                total += 1
-                if total <= 10 or total % 50 == 0:
-                    print(f"Indexés: {total} (dernier: {payload['file_name']})")
+                with lock:
+                    completed += 1
+                    if completed <= 10 or completed % 50 == 0:
+                        print(f"Indexés: {completed} (dernier: {payload['file_name']})")
             except Exception as e:
                 print(f"Erreur sur {payload['path']}: {e}")
-        print(f"Indexation initiale: {total} documents")
+
+        futures = []
+        for payload in iter_documents():
+            total += 1
+            futures.append(EXECUTOR.submit(_task, payload))
+        for f in futures:
+            try:
+                f.result()
+            except Exception:
+                pass
+        print(f"Indexation initiale: {completed} / {total} documents")
 
     if watch:
         print(f"Watch mode ON sur: {ROOT}")
@@ -251,6 +281,9 @@ def main(watch: bool, initial: bool):
         return
     if not initial and not watch:
         print("Rien à faire (ni --initial ni --watch)")
+
+    if EXECUTOR is not None:
+        EXECUTOR.shutdown(wait=False)
 
 
 if __name__ == "__main__":
