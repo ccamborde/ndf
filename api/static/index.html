@@ -48,6 +48,14 @@
       const API = (path) => (location.origin + path);
       let LAST_STATS = { indexed: 0, total: 0, pct: 0 };
 
+      function applyParamsFromURL(){
+        const u = new URL(window.location.href);
+        const q = u.searchParams.get('q') || '';
+        const sort = u.searchParams.get('sort') || '';
+        document.getElementById('q').value = q;
+        if(sort) document.getElementById('sort').value = sort;
+      }
+
       function loadScript(src){
         return new Promise((resolve,reject)=>{
           const s = document.createElement('script');
@@ -119,6 +127,11 @@
             count.textContent = `Résultats: ${total}`;
           }
           status.textContent = '';
+          // Synchroniser l'URL avec la requête courante
+          const newUrl = new URL(window.location.href);
+          if(q) newUrl.searchParams.set('q', q); else newUrl.searchParams.delete('q');
+          if(sort) newUrl.searchParams.set('sort', sort); else newUrl.searchParams.delete('sort');
+          window.history.replaceState({}, '', newUrl);
         }catch(e){
           results.innerHTML = `<div class="result"><strong>Erreur</strong><div class="muted">${(e && e.message) || e}</div></div>`;
           status.textContent = '';
@@ -198,12 +211,25 @@
       }
 
       document.getElementById('btnSearch').addEventListener('click', search);
-      document.getElementById('btnClear').addEventListener('click', ()=>{ document.getElementById('q').value=''; search(); });
+      document.getElementById('btnClear').addEventListener('click', ()=>{
+        document.getElementById('q').value='';
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('q');
+        window.history.replaceState({}, '', newUrl);
+        search();
+      });
       document.getElementById('q').addEventListener('keydown', (e)=>{ if(e.key==='Enter') search(); });
       // recherche initiale + progression périodique
+      applyParamsFromURL();
       search();
       refreshProgress();
       setInterval(refreshProgress, 5000);
+
+      // Support navigation arrière/avant
+      window.addEventListener('popstate', ()=>{
+        applyParamsFromURL();
+        search();
+      });
     </script>
   </body>
   </html>
