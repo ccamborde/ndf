@@ -10,8 +10,6 @@ thread_pool:
     queue_size: 200
   write:
     queue_size: 200
-  bulk:
-    queue_size: 200
 
 # Limiter le nombre de scrolls ouverts
 search:
