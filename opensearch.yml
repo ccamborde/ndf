@@ -20,11 +20,4 @@ indices:
   memory:
     index_buffer_size: 10%
 
-# Réduire l'utilisation de la mémoire mappée par Lucene
-index:
-  store:
-    type: niofs
-  mmap:
-    enabled: false
-
 
