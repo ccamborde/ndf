@@ -5,6 +5,7 @@ services:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
       - DISABLE_PERFORMANCE_ANALYZER=true
+      - DISABLE_PERFORMANCE_ANALYZER_AGENT=true
       - bootstrap.memory_lock=true
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m -XX:MaxMetaspaceSize=512m
     mem_limit: "2g"
@@ -24,7 +25,7 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 30
+      retries: 60
     restart: unless-stopped
 
   dashboards:
