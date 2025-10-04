@@ -7,9 +7,7 @@ services:
       - DISABLE_PERFORMANCE_ANALYZER=true
       - DISABLE_PERFORMANCE_ANALYZER_AGENT=true
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m -XX:MaxMetaspaceSize=512m
-    mem_limit: "2g"
-    mem_reservation: "1g"
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m -XX:MaxMetaspaceSize=256m
     cpus: "1.0"
     ulimits:
       memlock:
