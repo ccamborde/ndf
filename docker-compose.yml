@@ -5,9 +5,9 @@ services:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m -XX:MaxMetaspaceSize=256m
-    mem_limit: "1g"
-    mem_reservation: "768m"
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m -XX:MaxMetaspaceSize=512m
+    mem_limit: "2g"
+    mem_reservation: "1g"
     cpus: "1.0"
     ulimits:
       memlock:
@@ -19,6 +19,12 @@ services:
     volumes:
       - opensearch-data:/usr/share/opensearch/data
       - ./opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:2.14.0
@@ -55,7 +61,8 @@ services:
       - INDEX_NAME=ndf-docs
       - DOC_ROOT=/workspace/data/Note de frais
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
     ports:
       - "8080:8080"
     volumes:
@@ -75,8 +82,10 @@ services:
       - DOC_ROOT=/workspace/data/Note de frais
       - WORKERS=2
     depends_on:
-      - opensearch
-      - tika
+      opensearch:
+        condition: service_healthy
+      tika:
+        condition: service_started
     volumes:
       - ./:/workspace:ro
     mem_limit: "768m"
